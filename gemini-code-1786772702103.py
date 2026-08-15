@@ -1,8 +1,58 @@
+import streamlit as st
+import re
+
+st.set_page_config(page_title="국어 서논술형 자동 채점 시스템", layout="wide")
+
+st.title("📝 국어 서논술형 문항 자동 채점 시스템")
+st.markdown("학생의 답안을 입력하면 설정된 루브릭에 따라 자동으로 채점하고 피드백을 제공합니다.")
+
+# 1. 세트 선택 (가장 먼저 선언되어야 함)
+set_choice = st.selectbox("채점할 문항 세트를 선택하세요", ["1번 세트 (사회적 촉진과 억제)", "2번 세트 (정전기)", "3번 세트 (인공 지능 예술)"])
+
+# ---------------------------------------------------------
+# 공통 채점 함수 모음
+# ---------------------------------------------------------
+def check_keywords(text, positive_list, negative_list=[]):
+    """긍정 키워드 중 하나라도 포함하고, 부정 키워드가 없으면 True 반환"""
+    has_positive = any(word in text for word in positive_list)
+    has_negative = any(word in text for word in negative_list)
+    return has_positive and not has_negative
+
+def check_explanation_method(sentence):
+    """문장에서 설명 방법 명칭을 추출하고, 문장 구조가 그에 맞는지 검증"""
+    match = re.search(r'\((.*?)\)', sentence)
+    if not match:
+        return False, "설명 방법 명칭이 괄호 안에 표기되지 않았습니다.", ""
+    
+    method = match.group(1).replace(" ", "")
+    sentence_body = sentence.replace(f"({match.group(1)})", "").strip()
+    
+    method_markers = {
+        "예시": ["예를들어", "예컨대", "등", "예로"],
+        "비교와대조": ["달리", "비해", "반면", "하지만", "차이", "다르게"],
+        "대조": ["달리", "비해", "반면", "하지만", "차이", "다르게"],
+        "인과": ["때문에", "결과", "따라서", "왜냐하면", "기인한다"],
+        "정의": ["말한다", "뜻한다", "란", "이란"],
+        "분석": ["이루어져", "구성", "나뉜다"],
+        "분류와구분": ["분류", "구분", "나뉜다", "묶인다"]
+    }
+    
+    if method not in method_markers:
+        return False, f"'{method}'은(는) 허용된 설명 방법 명칭이 아니거나 인식할 수 없습니다.", method
+        
+    markers = method_markers[method]
+    sentence_no_space = sentence_body.replace(" ", "")
+    
+    if any(marker in sentence_no_space for marker in markers):
+        return True, "설명 방법과 문장 구조가 일치합니다.", method
+    else:
+        return False, f"괄호에 '{method}'(을)를 적었으나, 문장 내에 해당 설명 방법의 특성(표현)이 드러나지 않았습니다.", method
+
 # ---------------------------------------------------------
 # UI 및 세트별 채점 로직
 # ---------------------------------------------------------
 
-# 선택한 세트에 따라 예시 답안(Placeholder) 동적 설정
+# 2. 선택한 세트에 따라 예시 답안(Placeholder) 동적 설정
 if "1번" in set_choice:
     p_1a = "예: 비교적 쉬운 과제"
     p_1b = "예: 혼자 집중하는 시간을 가짐"
@@ -36,6 +86,7 @@ else: # 3번 세트
     p_3_a_desc = "예: 따뜻하고 감동적인 오케스트라 선율이나 거친 숨소리"
     p_3_a_eff = "예: 사람의 마음에 깊은 울림과 감동을 준다는 예술의 힘을 극대화함"
 
+# 3. 사용자 입력 폼
 with st.form("grading_form"):
     st.subheader("[서·논술형 1] 표 빈칸 채우기")
     col1, col2, col3 = st.columns(3)
@@ -55,3 +106,115 @@ with st.form("grading_form"):
     q3_a_eff = st.text_area("청각 요소(Ⓑ) 효과", placeholder=p_3_a_eff)
     
     submitted = st.form_submit_button("자동 채점 실행")
+
+# 4. 채점 실행
+if submitted:
+    st.markdown("---")
+    st.header("📊 채점 결과 및 피드백")
+    
+    # 1번 세트 로직 (사회적 촉진과 억제)
+    if "1번" in set_choice:
+        st.write("### [서·논술형 1] 피드백")
+        a_pass = check_keywords(q1_a, ["쉬운", "단순", "친숙", "적게", "좋아하는"])
+        b_pass = check_keywords(q1_b, ["혼자", "단독", "차분", "집중", "연습"])
+        c_pass = check_keywords(q1_c, ["사회적 억제", "사회적억제"])
+        
+        st.write(f"- ㉠: {'✅ 정답' if a_pass else '❌ 오답 (쉬운, 친숙한 등의 의미 부족)'}")
+        st.write(f"- ㉡: {'✅ 정답' if b_pass else '❌ 오답 (혼자, 집중 등의 의미 부족)'}")
+        st.write(f"- ㉢: {'✅ 정답' if c_pass else '❌ 오답 (정확한 개념어 미사용)'}")
+
+        st.write("### [서·논술형 2] 피드백")
+        if q2_1 and q2_2:
+            pass1, msg1, m1 = check_explanation_method(q2_1)
+            pass2, msg2, m2 = check_explanation_method(q2_2)
+            content_pass1 = check_keywords(q2_1, ["쉬운", "어려운", "혼자", "함께", "복잡한"])
+            content_pass2 = check_keywords(q2_2, ["쉬운", "어려운", "혼자", "함께", "복잡한"])
+            
+            st.write(f"**(1) 문장:** {msg1} / 본문 키워드 활용: {'통과' if content_pass1 else '미흡'}")
+            st.write(f"**(2) 문장:** {msg2} / 본문 키워드 활용: {'통과' if content_pass2 else '미흡'}")
+            if m1 == m2 and m1 != "":
+                st.error("🚨 두 문장에 동일한 설명 방법이 사용되어 조건 위반입니다.")
+        else:
+            st.warning("두 문장을 모두 입력해야 채점됩니다.")
+            
+        st.write("### [서·논술형 3] 피드백")
+        v_desc_pass = check_keywords(q3_v_desc, ["혼자", "스탠드", "차분", "독서실", "단절", "집중", "조용"])
+        v_eff_pass = check_keywords(q3_v_eff, ["어려운", "억제", "집중", "방해"])
+        a_desc_pass = check_keywords(q3_a_desc, ["조용", "차단", "시계", "연필", "백색소음", "없", "정적"])
+        a_eff_pass = check_keywords(q3_a_eff, ["어려운", "억제", "집중", "차분"])
+        
+        st.write(f"- **시각 묘사:** {'✅ (1점)' if v_desc_pass else '❌ (0점 - 혼자, 단절된 모습 부족)'}")
+        st.write(f"- **시각 효과:** {'✅ (2점)' if v_eff_pass else '❌ (0점 - 어려운 과제에 집중한다는 결론 부족)'}")
+        st.write(f"- **청각 묘사:** {'✅ (1점)' if a_desc_pass else '❌ (0점 - 소음 차단, 조용함 묘사 부족)'}")
+        st.write(f"- **청각 효과:** {'✅ (2점)' if a_eff_pass else '❌ (0점 - 집중력 향상이라는 결론 부족)'}")
+
+    # 2번 세트 로직 (정전기)
+    elif "2번" in set_choice:
+        st.write("### [서·논술형 1] 피드백")
+        a_pass = check_keywords(q1_a, ["고여", "고인"])
+        b_pass = check_keywords(q1_b, ["이동", "정지", "머물", "가만"])
+        c_pass = check_keywords(q1_c, ["위험", "안전", "피해"])
+        st.write(f"- ㉠: {'✅ 정답' if a_pass else '❌ 오답 (고여 있는 물의 의미 부족)'}")
+        st.write(f"- ㉡: {'✅ 정답' if b_pass else '❌ 오답 (이동하지 않음/정지의 의미 부족)'}")
+        st.write(f"- ㉢: {'✅ 정답' if c_pass else '❌ 오답 (위험하지 않음의 의미 부족)'}")
+
+        st.write("### [서·논술형 2] 피드백")
+        if q2_1 and q2_2:
+            pass1, msg1, m1 = check_explanation_method(q2_1)
+            pass2, msg2, m2 = check_explanation_method(q2_2)
+            content_pass1 = check_keywords(q2_1, ["정전기", "전기", "이동", "정지", "위험", "머물러"])
+            content_pass2 = check_keywords(q2_2, ["정전기", "전기", "이동", "정지", "위험", "머물러"])
+            
+            st.write(f"**(1) 문장:** {msg1} / 본문 키워드 활용: {'통과' if content_pass1 else '미흡'}")
+            st.write(f"**(2) 문장:** {msg2} / 본문 키워드 활용: {'통과' if content_pass2 else '미흡'}")
+            if m1 == m2 and m1 != "":
+                st.error("🚨 두 문장에 동일한 설명 방법이 사용되어 조건 위반입니다.")
+        else:
+            st.warning("두 문장을 모두 입력해야 채점됩니다.")
+            
+        st.write("### [서·논술형 3] 피드백")
+        v_desc_pass = check_keywords(q3_v_desc, ["산꼭대기", "호수", "웅덩이", "고요", "잔잔", "고여"])
+        v_eff_pass = check_keywords(q3_v_eff, ["이동", "머물", "전압", "정지"])
+        a_desc_pass = check_keywords(q3_a_desc, ["바람", "자연", "조용", "없", "정적"])
+        a_eff_pass = check_keywords(q3_a_eff, ["이동", "위험", "안전", "피해"])
+        
+        st.write(f"- **시각 묘사:** {'✅ (1점)' if v_desc_pass else '❌ (0점 - 정적인 물의 묘사 부족)'}")
+        st.write(f"- **시각 효과:** {'✅ (2점)' if v_eff_pass else '❌ (0점 - 전하가 흐르지 않는다는 결론 부족)'}")
+        st.write(f"- **청각 묘사:** {'✅ (1점)' if a_desc_pass else '❌ (0점 - 조용함, 폭포와 대비되는 소리 묘사 부족)'}")
+        st.write(f"- **청각 효과:** {'✅ (2점)' if a_eff_pass else '❌ (0점 - 이동하지 않아 안전하다는 결론 부족)'}")
+
+    # 3번 세트 로직 (인공 지능 예술)
+    elif "3번" in set_choice:
+        st.write("### [서·논술형 1] 피드백")
+        a_pass = check_keywords(q1_a, ["로봇", "완벽", "피겨", "실수"])
+        b_pass = check_keywords(q1_b, ["감정", "철학", "경험", "없", "예술", "어렵", "아니"], negative_list=["감정이 있", "예술이다"])
+        c_pass = check_keywords(q1_c, ["변화", "범주", "확장", "가치", "의미"])
+        
+        st.write(f"- ㉠: {'✅ 정답' if a_pass else '❌ 오답 (로봇/완벽한 기술에 대한 언급 부족)'}")
+        st.write(f"- ㉡: {'✅ 정답' if b_pass else '❌ 오답 (감정/철학 부재라는 근거 누락 혹은 오개념)'}")
+        st.write(f"- ㉢: {'✅ 정답' if c_pass else '❌ 오답 (예술의 범주 확장, 변화 등의 가치 누락)'}")
+        
+        st.write("### [서·논술형 2] 피드백")
+        if q2_1 and q2_2:
+            pass1, msg1, m1 = check_explanation_method(q2_1)
+            pass2, msg2, m2 = check_explanation_method(q2_2)
+            content_pass1 = check_keywords(q2_1, ["인간", "감정", "철학", "변화", "범주", "상징"])
+            content_pass2 = check_keywords(q2_2, ["인간", "감정", "철학", "변화", "범주", "상징"])
+            
+            st.write(f"**(1) 문장:** {msg1} / 본문 키워드 활용: {'통과' if content_pass1 else '미흡'}")
+            st.write(f"**(2) 문장:** {msg2} / 본문 키워드 활용: {'통과' if content_pass2 else '미흡'}")
+            if m1 == m2 and m1 != "":
+                st.error("🚨 두 문장에 동일한 설명 방법이 사용되어 조건 위반입니다.")
+        else:
+            st.warning("두 문장을 모두 입력해야 채점됩니다.")
+            
+        st.write("### [서·논술형 3] 피드백")
+        v_desc_pass = check_keywords(q3_v_desc, ["붓", "땀", "고민", "표정", "덧칠", "경험"])
+        v_eff_pass = check_keywords(q3_v_eff, ["감정", "열정", "철학", "경험", "요소"])
+        a_desc_pass = check_keywords(q3_a_desc, ["따뜻", "오케스트라", "숨소리", "인간"])
+        a_eff_pass = check_keywords(q3_a_eff, ["울림", "감동", "예술", "마음"])
+        
+        st.write(f"- **시각 묘사:** {'✅ (1점)' if v_desc_pass else '❌ (0점 - 작가의 땀, 노력, 감정이 들어간 묘사 부족)'}")
+        st.write(f"- **시각 효과:** {'✅ (2점)' if v_eff_pass else '❌ (0점 - 내외부적 요소, 고유한 감정이라는 결론 부족)'}")
+        st.write(f"- **청각 묘사:** {'✅ (1점)' if a_desc_pass else '❌ (0점 - 인간적인 온기, 숨소리 등 묘사 부족)'}")
+        st.write(f"- **청각 효과:** {'✅ (2점)' if a_eff_pass else '❌ (0점 - 마음에 깊은 울림/감동을 준다는 결론 부족)'}")
